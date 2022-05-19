@@ -19,6 +19,7 @@ DEAD = 'DEAD'
 ALIVE = 'ALIVE'
 
 
+
 class Apple:
     def __init__(self):
         self.posX = random.randint(0, 60) * 10
@@ -38,22 +39,40 @@ class Snake:
     def __init__(self):
         self.starting_posX, self.starting_posY = 300, 300
         self.direction = 'E'
-        self.segments = [Segment(self, 0)]
-        self.grow()
-        self.grow()
         self.state = ALIVE
         self.frame = 0
         self.color = (random.randint(30, 255), random.randint(30, 255), random.randint(30, 255))
         self.apple = Apple()
         self.net = Brain(2, 5, 2)
+        self.num_apples = 0
+        self.frames_alive = 0
+        self.fitness = 0
+        self.death = 100
+        self.segments = [Segment(self, 0)]
+        self.grow()
+        self.grow()
+
+
+    def reset(self):
+        self.state = ALIVE
+        self.fitness = 0
+        self.frames_alive = 0
+        self.num_apples = 0
+        self.direction = 'E'
+        self.segments = [Segment(self, 0)]
+        self.grow()
+        self.grow()
 
     def grow(self):
-        print(self, len(self.segments))
+
         self.segments.append(Segment(self, len(self.segments)))
+        self.num_apples += 1
+        self.death += 20
 
     def move(self):
         for segment in reversed(self.segments):
             segment.move()
+        self.death -= 1
 
     def draw(self):
         for i, segment in enumerate(self.segments):
@@ -74,19 +93,23 @@ class Snake:
         for segment in self.segments:
             if segment.index > 0 and segment.posX == self.segments[0].posX and segment.posY == self.segments[0].posY:
                 self.state = DEAD
+                generation.num_alive -= 1
 
         if not (0 <= self.segments[0].posX <= 600 and 0 <= self.segments[0].posY <= 600):
             self.state = DEAD
+            generation.num_alive -= 1
 
     def get_inputs(self):
-        inputs = [(self.segments[0].posX - self.apple.posX+600)/600,(self.segments[0].posX - self.apple.posX+600)/600]
+        inputs = [(self.segments[0].posX - self.apple.posX + 600) / 600,
+                  (self.segments[0].posX - self.apple.posX + 600) / 600]
 
         return inputs
+
     def get_direction(self, current_direction):
         inputs = self.get_inputs()
         val = self.net.get_max_value(inputs)
         d = np.where(val == np.max(val))
-        print(d[0])
+
         if d[0] == 1 and np.max(val) > 0.5:
             return lefts[current_direction]
         elif d[0] == 0 and np.max(val) > 0.5:
@@ -95,6 +118,7 @@ class Snake:
             return current_direction
 
     def update(self):
+        global death_clock
         if self.state != DEAD:
             self.frame += 1
             if self.frame % 2 == 0:
@@ -105,6 +129,9 @@ class Snake:
                 self.check_collision()
                 self.check_for_apple()
                 self.change_targets()
+                self.frames_alive += 1
+                if self.death <= 0:
+                    death_clock -= 2
             self.draw()
 
 
@@ -150,19 +177,37 @@ class SnakeGeneration():
     def __init__(self):
         self.snakes = []
         self.create_more()
+        self.num_alive = 0
 
-    def create_more(self):
+    def create(self):
         for _ in range(100):
             self.snakes.append(Snake())
+            self.num_alive += 1
+
+    def create_more(self):
+        for snake in self.snakes:
+            snake.reset()
+            self.num_alive += 1
+
+    def evolve(self):
+        for s in self.snakes:
+            s.fitness += (s.frames_alive * s.num_apples)
+
+        self.snakes.sort(key=lambda x: x.fitness, reverse=True)
+
+        for s in self.snakes:
+            print('fitness: ', s.fitness)
+        self.create_more()
 
 
-
+death_clock = 10000
 clock = pygame.time.Clock()
 
 gameSpeed = 20
 direction = 'E'
 
 generation = SnakeGeneration()
+generation.create()
 while running:
     clock.tick(144)
 
@@ -178,7 +223,9 @@ while running:
     screen.fill((10, 10, 10))
     for s in generation.snakes:
         s.update()
-
+    if generation.num_alive == 0 or death_clock < 1000:
+        generation.evolve()
+        death_clock = 10000
     pygame.display.flip()
 
 pygame.quit()
