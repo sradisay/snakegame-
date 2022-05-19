@@ -15,9 +15,13 @@ movements = {pygame.K_UP: 'N', pygame.K_RIGHT: 'E', pygame.K_DOWN: 'S', pygame.K
 cardinals = ['N', 'E', 'S', 'W']
 rights = {(0, -1): (1, 0), (1, 0): (0, 1), (0, 1): (-1, 0), (-1, 0): (0, -1)}
 lefts = {(0, -1): (-1, 0), (1, 0): (0, -1), (0, 1): (1, 0), (-1, 0): (0, 1)}
+direction_to_data = {(0, -1): 0.25, (1, 0):0.5, (0, 1): 0.75, (-1, 0): 0.99}
+
 DEAD = 'DEAD'
 ALIVE = 'ALIVE'
-
+mut_cut = 0.4
+mut_bad = 0.2
+mut_mod = 0.3
 
 
 class Apple:
@@ -43,12 +47,14 @@ class Snake:
         self.frame = 0
         self.color = (random.randint(30, 255), random.randint(30, 255), random.randint(30, 255))
         self.apple = Apple()
-        self.net = Brain(2, 5, 2)
+        self.net = Brain(3, 10, 2)
         self.num_apples = 0
         self.frames_alive = 0
         self.fitness = 0
         self.death = 100
         self.segments = [Segment(self, 0)]
+        self.grow()
+        self.grow()
         self.grow()
         self.grow()
 
@@ -57,17 +63,22 @@ class Snake:
         self.state = ALIVE
         self.fitness = 0
         self.frames_alive = 0
-        self.num_apples = 0
+        self.num_apples = 1
         self.direction = 'E'
         self.segments = [Segment(self, 0)]
         self.grow()
         self.grow()
+        self.grow()
+        self.grow()
+        self.apple.kill()
+
 
     def grow(self):
 
         self.segments.append(Segment(self, len(self.segments)))
         self.num_apples += 1
-        self.death += 20
+        global death_clock
+        death_clock = 1000
 
     def move(self):
         for segment in reversed(self.segments):
@@ -99,9 +110,18 @@ class Snake:
             self.state = DEAD
             generation.num_alive -= 1
 
+    def next_col(self):
+        next_posX = self.segments[0].posX + self.segments[0].direction[0]
+        next_posY = self.segments[0].posX + self.segments[0].direction[1]
+        if not (0 <= next_posX  <= 600 and 0 <= next_posY <= 600):
+            return 0.99
+        for segment in self.segments:
+            if segment.index > 0 and segment.posX == next_posX and segment.posY == next_posY:
+                return 0.99
+        return 0.01
     def get_inputs(self):
-        inputs = [(self.segments[0].posX - self.apple.posX + 600) / 600,
-                  (self.segments[0].posX - self.apple.posX + 600) / 600]
+        inputs = [direction_to_data[self.segments[0].direction],
+                  (self.segments[0].posX - self.apple.posX + 600) / 600, self.next_col()]
 
         return inputs
 
@@ -110,18 +130,21 @@ class Snake:
         val = self.net.get_max_value(inputs)
         d = np.where(val == np.max(val))
 
-        if d[0] == 1 and np.max(val) > 0.5:
+        if d[0] == 1 and np.max(val) > 0.4:
             return lefts[current_direction]
-        elif d[0] == 0 and np.max(val) > 0.5:
+        elif d[0] == 0 and np.max(val) > 0.4:
             return rights[current_direction]
         else:
             return current_direction
-
+    def create_offspring(p1,p2):
+        new_snake = Snake()
+        new_snake.net.create_mixed_weight(p1.net,p2.net)
+        return new_snake
     def update(self):
         global death_clock
         if self.state != DEAD:
-            self.frame += 1
-            if self.frame % 2 == 0:
+            self.frame += gameSpeed/20
+            if self.frame % (gameSpeed/10) == 0:
                 self.move()
             if self.frame == gameSpeed:
                 self.frame = 0
@@ -130,8 +153,8 @@ class Snake:
                 self.check_for_apple()
                 self.change_targets()
                 self.frames_alive += 1
-                if self.death <= 0:
-                    death_clock -= 2
+
+
             self.draw()
 
 
@@ -195,22 +218,48 @@ class SnakeGeneration():
 
         self.snakes.sort(key=lambda x: x.fitness, reverse=True)
 
-        for s in self.snakes:
-            print('fitness: ', s.fitness)
+        cut_off = int(len(self.snakes) * mut_cut)
+        good_snakes = self.snakes[0:cut_off]
+        bad_snakes = self.snakes[cut_off:]
+        num_bad = int(len(self.snakes) * mut_bad)
+
+        for s in bad_snakes:
+            s.net.modify_weights()
+
+        new_snakes = []
+
+        idx_bad = np.random.choice(np.arange(len(bad_snakes)),num_bad,replace=False)
+
+        for index in idx_bad:
+            new_snakes.append(bad_snakes[index])
+
+        new_snakes.extend(good_snakes)
+        childs = len(self.snakes) - len(new_snakes)
+
+        while len(new_snakes) < len(self.snakes):
+            idx_new = np.random.choice(np.arange(len(good_snakes)),2,replace=False)
+            if idx_new[0] != idx_new[1]:
+                new_snake = Snake.create_offspring(good_snakes[idx_new[0]],good_snakes[idx_new[1]])
+                if random.random() < mut_mod:
+                    new_snake.net.modify_weights()
+                new_snakes.append(new_snake)
+        for s in new_snakes:
+            s.reset()
+
+        self.snakes = new_snakes
         self.create_more()
 
 
-death_clock = 10000
+death_clock = 800
 clock = pygame.time.Clock()
 
-gameSpeed = 20
+gameSpeed = 5
 direction = 'E'
 
 generation = SnakeGeneration()
 generation.create()
 while running:
-    clock.tick(144)
-
+    clock.tick(3000)
     for event in pygame.event.get():
 
         if event.type == pygame.KEYDOWN:
@@ -223,9 +272,11 @@ while running:
     screen.fill((10, 10, 10))
     for s in generation.snakes:
         s.update()
-    if generation.num_alive == 0 or death_clock < 1000:
+    if generation.num_alive == 0 or death_clock < 50:
         generation.evolve()
-        death_clock = 10000
+        death_clock = 800
     pygame.display.flip()
+    print('\r' + str(death_clock))
+    death_clock -= 16 / (generation.num_alive + 1)
 
 pygame.quit()

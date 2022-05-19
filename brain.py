@@ -33,7 +33,7 @@ class Net:
 
     def create_mixed_weight(self, net1, net2):
         self.weight_input_hidden = Net.get_mix_from_arrays(net1.weight_input_hidden, net2.weight_input_hidden)
-        self.weight_hidden_output = Net.get_mix_from_arrays(net1.weight_hidden_outputs, net2.weight_hidden_output)
+        self.weight_hidden_output = Net.get_mix_from_arrays(net1.weight_hidden_output, net2.weight_hidden_output)
 
     def modify_array(a):
         for x in np.nditer(a, op_flags=['readwrite']):
