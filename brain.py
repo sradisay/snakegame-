@@ -25,7 +25,7 @@ class Net:
     def get_max_value(self, inputs_list):
         outputs = self.get_outputs(inputs_list)
 
-        return outputs
+        return np.max(outputs)
 
     def modify_weights(self):
         Net.modify_array(self.weight_input_hidden)
