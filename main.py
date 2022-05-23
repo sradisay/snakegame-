@@ -1,5 +1,6 @@
 import math
 import random
+import time
 
 import numpy as np
 import pygame
@@ -8,25 +9,29 @@ from brain import Net as Brain
 
 pygame.init()
 
-screen = pygame.display.set_mode((800, 600))
+screen = pygame.display.set_mode((600, 600))
 
 running = True
-directions = {'N': (0, -1), 'E': (1, 0), 'S': (0, 1), 'W': (-1, 0)}
-opposites = {(0, -1): 'S', (1, 0): 'W', (0, 1): 'N', (-1, 0): 'E'}
+
+NTH = (0, -1)
+STH = (0, 1)
+WST = (-1, 0)
+EST = (1, 0)
+
 oppo = {(0, -1): (0, 1), (1, 0): (-1, 0), (0, 1): (0, -1), (-1, 0): (1, 0)}
-movements = {pygame.K_UP: 'N', pygame.K_RIGHT: 'E', pygame.K_DOWN: 'S', pygame.K_LEFT: 'W'}
-cardinals = ['N', 'E', 'S', 'W']
 rights = {(0, -1): (1, 0), (1, 0): (0, 1), (0, 1): (-1, 0), (-1, 0): (0, -1)}
 lefts = {(0, -1): (-1, 0), (1, 0): (0, -1), (0, 1): (1, 0), (-1, 0): (0, 1)}
-direction_to_data = {(0, -1): 0.25, (1, 0): 0.5, (0, 1): 0.75, (-1, 0): 0.99}
 VERTICAL = [(0, -1), (0, 1)]
 HORIZONTAL = [(1, 0), (-1, 0)]
-DEAD = 'DEAD'
-ALIVE = 'ALIVE'
+RAY_DIRS = [(0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1)]
+DEAD = 0
+ALIVE = 1
+
 mut_cut = 0.2
 mut_bad = 0.3
-mut_mod = 0.4
+mut_mod = 0.3
 
+WALLS = [[(0,0),(0,600)],[(0,0),(600,0)],[(600,600),(600,0)],[(600,600),(0,600)]]
 
 class Apple:
     def __init__(self, color):
@@ -49,16 +54,15 @@ class Apple:
 class Snake:
     def __init__(self):
         self.starting_posX, self.starting_posY = 300, 300
-        self.direction = 'E'
+        self.direction = (1, 0)
         self.state = ALIVE
         self.frame = 0
         self.color = (random.randint(30, 255), random.randint(30, 255), random.randint(30, 255))
         self.apple = Apple(self.color)
-        self.net = Brain(5, 25, 1)
+        self.net = Brain(32, 24, 12, 4)
         self.num_apples = 0
         self.frames_alive = 0
         self.fitness = 0
-
         self.segments = [Segment(self, 0)]
         self.grow()
         self.grow()
@@ -68,9 +72,10 @@ class Snake:
     def reset(self):
         self.state = ALIVE
         self.apple.kill(False)
-        self.frames_alive = 0
         self.num_apples = 0
-        self.direction = 'E'
+        self.frames_alive = 0
+        self.fitness = 0
+        self.direction = (1, 0)
         self.segments = [Segment(self, 0)]
         self.grow()
         self.grow()
@@ -80,7 +85,6 @@ class Snake:
     def grow(self):
 
         self.segments.append(Segment(self, len(self.segments)))
-        self.num_apples += 10
 
     def move(self):
         for segment in reversed(self.segments):
@@ -91,6 +95,13 @@ class Snake:
             pygame.draw.rect(screen, self.color, [[segment.posX, segment.posY], [10, 10]])
         self.apple.draw()
 
+        for d in RAY_DIRS:
+            X = self.segments[0].posX
+            Y = self.segments[0].posY
+            X2 = X + d[0] * 600
+            Y2 = Y + d[1] * 600
+            pygame.draw.line(screen, self.color, [X, Y], [X2, Y2])
+
     def change_targets(self):
         for segment in reversed(self.segments):
             segment.target = (self.segments[segment.index - 1].posX, self.segments[segment.index - 1].posY)
@@ -98,114 +109,125 @@ class Snake:
     def check_for_apple(self):
         if self.segments[0].posX == self.apple.posX and self.segments[0].posY == self.apple.posY:
             self.apple.kill(True)
+            self.num_apples += 10
             self.grow()
-            global death_clock
-            death_clock = 100000
 
     def check_collision(self):
 
         for segment in self.segments:
-            if segment.index > 0 and segment.posX == self.segments[0].posX and segment.posY == self.segments[0].posY:
+            if segment.index > 0 and segment.posX == self.segments[0].posX and segment.posY == self.segments[0].posY and self.state != DEAD:
                 self.state = DEAD
                 generation.num_alive -= 1
-                break
+
         if self.state != DEAD:
-            if not (0 <= self.segments[0].posX <= 600 and 0 <= self.segments[0].posY <= 600):
+            if not (0 <= self.segments[0].posX < 600 and 0 <= self.segments[0].posY < 600):
                 self.state = DEAD
                 generation.num_alive -= 1
 
-    def next_col(self):
-        next_posX = self.segments[0].posX + self.segments[0].direction[0]
-        next_posY = self.segments[0].posX + self.segments[0].direction[1]
-        if not (0 <= next_posX <= 600 and 0 <= next_posY <= 600):
-            return 1
-        for segment in self.segments:
-            if segment.index > 0 and segment.posX == next_posX and segment.posY == next_posY:
-                return 1
-        return 0
+    def get_intersect(self, A, B, C, D):
+        # a1x + b1y = c1
+        a1 = B[1] - A[1]
+        b1 = A[0] - B[0]
+        c1 = a1 * (A[0]) + b1 * (A[1])
 
-    def next_col_right(self, current_direction):
-        next_posX = self.segments[0].posX + rights[current_direction][0]
-        next_posY = self.segments[0].posX + rights[current_direction][1]
-        if not (0 <= next_posX <= 600 and 0 <= next_posY <= 600):
-            return 1
-        for segment in self.segments:
-            if segment.index > 0 and segment.posX == next_posX and segment.posY == next_posY:
-                return 1
-        return 0
+        # a2x + b2y = c2
+        a2 = D[1] - C[1]
+        b2 = C[0] - D[0]
+        c2 = a2 * (C[0]) + b2 * (C[1])
 
-    def next_col_left(self, current_direction):
-        next_posX = self.segments[0].posX + lefts[current_direction][0]
-        next_posY = self.segments[0].posX + lefts[current_direction][1]
-        if not (0 <= next_posX <= 600 and 0 <= next_posY <= 600):
-            return 1
-        for segment in self.segments:
-            if segment.index > 0 and segment.posX == next_posX and segment.posY == next_posY:
-                return 1
-        return 0
+        # determinant
+        det = a1 * b2 - a2 * b1
 
-    def apple_angle(self):
-        pX = self.segments[0].posX
-        pY = self.segments[0].posY
-        ApX = self.apple.posX
-        ApY = self.apple.posY
+        # parallel line
+        if det == 0:
+            return False
 
-        angle = math.atan2(ApY - pY, ApX - pX) * 180 / math.pi;
-
-        return angle / 180
-
-    def suggested_direction(self, current_direction):
-        d = [(0, -1), (1, 0), (0, 1), (-1, 0)]
-        d.remove(oppo[current_direction])
-        for dir in d:
-            if dir == current_direction and self.next_col() == 1:
-                d.remove(dir)
-            elif dir == lefts[current_direction] and self.next_col_left(current_direction) == 1:
-                d.remove(dir)
-            elif dir == rights[current_direction] and self.next_col_right(current_direction) == 1:
-                d.remove(dir)
-        s = []
-        for dir in d:
-            if dir in VERTICAL:
-                if abs(self.apple.posY - (self.segments[0].posY + dir[1])) <= abs(
-                        self.apple.posY - self.segments[0].posY):
-                    s.append(dir)
-            if dir in HORIZONTAL:
-                if abs(self.apple.posX - (self.segments[0].posX + dir[0])) <= abs(
-                        self.apple.posX - self.segments[0].posX):
-                    s.append(dir)
-        if len(s) == 0:
-           suggested =  d[0]
-        elif len(s) != 1:
-            suggested = random.choice(s)
-        else:
-            suggested = s[0]
-
-        if suggested == lefts[current_direction]:
-            return -1
-        elif suggested == rights[current_direction]:
-            return 1
-        elif suggested == current_direction:
-            return 0
+        # intersect point(x,y)
+        x = ((b2 * c1) - (b1 * c2)) / det
+        y = ((a1 * c2) - (a2 * c1)) / det
+        return (x, y)
 
 
-    def get_inputs(self, current_direction):
+    def vision(self):
+        vision_inputs = []
+        for d in RAY_DIRS:
+            X = self.segments[0].posX
+            Y = self.segments[0].posY
+            X2 = X + d[0] * 600
+            Y2 = Y + d[1] * 600
+            if X-X2 == 0:
+                if self.apple.posX != X:
+                    vision_inputs.append(0)# Is there and apple in this direction
+                else:
+                    vision_inputs.append(1)# Is there and apple in this direction
+                nothing_detected = True
+                for seg in self.segments:
+                    if nothing_detected and seg.index != 0 and seg.posX == X:
+                        vision_inputs.append(1)
+                        nothing_detected = False
+                if nothing_detected:
+                    vision_inputs.append(0)
+                dist1 = []
 
-        inputs = [self.next_col(), self.next_col_left(current_direction), self.next_col_right(current_direction),
-                  self.apple_angle(), self.suggested_direction(current_direction)]
+                for wall in WALLS:
+                    intersection = self.get_intersect((X, Y), (X2, Y2), wall[0], wall[1])
+                    if intersection != False:
+                        dist1.append(np.linalg.norm(np.array([X, Y]) - np.array(intersection)))
 
+
+                vision_inputs.append(min(dist1) / 600)
+
+
+            else:
+                slope = (Y-Y2)/(X-X2)
+                B = Y-slope*X
+
+                if slope*self.apple.posX+B-self.apple.posY != 0:
+                    vision_inputs.append(0)# Is there and apple in this direction
+                else:
+                    vision_inputs.append(1)# Is there and apple in this direction
+                nothing_detected = True
+                for seg in self.segments:
+                    if nothing_detected and seg.index != 0 and slope*seg.posX+B-seg.posY == 0:
+                        vision_inputs.append(1)
+                        nothing_detected = False
+                if nothing_detected:
+                    vision_inputs.append(0)
+
+                dist1 = []
+
+                for wall in WALLS:
+                    intersection = self.get_intersect((X,Y), (X2,Y2), wall[0], wall[1])
+                    if intersection != False:
+                        dist1.append(np.linalg.norm(np.array([X, Y]) - np.array(intersection)))
+                print(dist1)
+                vision_inputs.append(min(dist1)/850)
+
+
+        return vision_inputs
+
+    def get_inputs(self, dir):
+        tail_dir = self.segments[-1].direction
+        inputs = [dir == NTH, dir == STH, dir == EST, dir == WST, tail_dir == NTH, tail_dir == STH, tail_dir == EST,
+                  tail_dir == WST]
+
+        for val in self.vision():
+            inputs.append(val)
         return inputs
 
     def get_direction(self, current_direction):
         inputs = self.get_inputs(current_direction)
         val = self.net.get_max_value(inputs)
-        print(val)
-        if val >= 0.66:
-            return rights[current_direction]
-        elif val >= 0.33:
-            return lefts[current_direction]
-        else:
-            return current_direction
+        for index, value in enumerate(val):
+            if value == np.max(val):
+                if index == 0:
+                    return 0, -1
+                elif index == 1:
+                    return 0, 1
+                elif index == 2:
+                    return 1, 0
+                elif index == 3:
+                    return -1, 0
 
     def create_offspring(p1, p2):
         new_snake = Snake()
@@ -217,13 +239,13 @@ class Snake:
             self.frame += gameSpeed / 20
             if self.frame % (gameSpeed / 10) == 0:
                 self.move()
-            if self.frame == gameSpeed:
+            if self.frame == gameSpeed and self.segments[0].posX % 10 == 0 and self.segments[0].posY % 10 == 0:
                 self.frame = 0
                 self.segments[0].direction = self.get_direction(self.segments[0].direction)
                 self.check_collision()
                 self.check_for_apple()
                 self.change_targets()
-                self.frames_alive += 1
+
             self.draw()
 
 
@@ -236,7 +258,7 @@ class Segment:
         if self.index == 0:
             self.posX = self.starting_posX
             self.posY = self.starting_posY
-            self.direction = directions[snake.direction]
+            self.direction = snake.direction
 
         else:
             self.parent = snake.segments[self.index - 1]
@@ -268,11 +290,26 @@ class Segment:
 class SnakeGeneration():
     def __init__(self):
         self.snakes = []
-        self.create_more()
         self.num_alive = 0
+        self.length = 0
+
+    def get_overall_length(self):
+        self.length = 0
+        for s in self.snakes:
+            self.length += len(s.segments)
+
+    def has_length_changes(self):
+        previous_length = self.length
+        global death_clock
+        self.get_overall_length()
+        if previous_length == self.length:
+
+            death_clock -= 1
+        else:
+            death_clock += 1000
 
     def create(self):
-        for _ in range(1000):
+        for _ in range(250):
             self.snakes.append(Snake())
             self.num_alive += 1
 
@@ -283,10 +320,10 @@ class SnakeGeneration():
 
     def evolve(self):
         for s in self.snakes:
-            s.fitness += (s.frames_alive * s.num_apples)
+            s.fitness += (s.num_apples)
 
         self.snakes.sort(key=lambda x: x.fitness, reverse=True)
-
+        print(self.snakes[0].fitness)
         cut_off = int(len(self.snakes) * mut_cut)
         good_snakes = self.snakes[0:cut_off]
         bad_snakes = self.snakes[cut_off:]
@@ -322,11 +359,11 @@ class SnakeGeneration():
 clock = pygame.time.Clock()
 
 gameSpeed = 5
-direction = 'E'
 
 generation = SnakeGeneration()
 generation.create()
-death_clock = 30000
+death_clock = 10000
+
 while running:
     clock.tick(3000)
     for event in pygame.event.get():
@@ -340,12 +377,16 @@ while running:
 
     screen.fill((10, 10, 10))
     for s in generation.snakes:
-        s.update()
-    if generation.num_alive <= 1 or death_clock < 0:
+        if s.state != DEAD:
+            s.update()
+    if generation.num_alive <= 0 or death_clock < 0:
+
+        time.sleep(0.5)
         generation.num_alive = 0
         generation.evolve()
-        death_clock = 30000
-    death_clock -= 1
+        death_clock = 10000
+
     pygame.display.flip()
+    generation.has_length_changes()
 
 pygame.quit()
