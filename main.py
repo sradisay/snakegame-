@@ -31,7 +31,9 @@ mut_cut = 0.2
 mut_bad = 0.3
 mut_mod = 0.3
 
-WALLS = [[(0,0),(0,600)],[(0,0),(600,0)],[(600,600),(600,0)],[(600,600),(0,600)]]
+WALLS = [[(0, 0), (0, 600)], [(0, 0), (600, 0)], [(600, 600), (600, 0)], [(600, 600), (0, 600)]]
+WALLS_DICT = {(0, -1): [[(0, 0), (0, 600)]]}
+
 
 class Apple:
     def __init__(self, color):
@@ -115,7 +117,8 @@ class Snake:
     def check_collision(self):
 
         for segment in self.segments:
-            if segment.index > 0 and segment.posX == self.segments[0].posX and segment.posY == self.segments[0].posY and self.state != DEAD:
+            if segment.index > 0 and segment.posX == self.segments[0].posX and segment.posY == self.segments[
+                0].posY and self.state != DEAD:
                 self.state = DEAD
                 generation.num_alive -= 1
 
@@ -147,7 +150,6 @@ class Snake:
         y = ((a1 * c2) - (a2 * c1)) / det
         return (x, y)
 
-
     def vision(self):
         vision_inputs = []
         for d in RAY_DIRS:
@@ -155,14 +157,15 @@ class Snake:
             Y = self.segments[0].posY
             X2 = X + d[0] * 600
             Y2 = Y + d[1] * 600
-            if X-X2 == 0:
+            if X - X2 == 0:  # (0,-1) (0, 1)
                 if self.apple.posX != X:
-                    vision_inputs.append(0)# Is there and apple in this direction
+                    vision_inputs.append(0)  # Is there and apple in this direction
                 else:
-                    vision_inputs.append(1)# Is there and apple in this direction
+                    vision_inputs.append(1)  # Is there and apple in this direction
                 nothing_detected = True
                 for seg in self.segments:
-                    if nothing_detected and seg.index != 0 and seg.posX == X:
+                    if nothing_detected and seg.index != 0 and seg.posX == X and (
+                            ((seg.posY - Y) + 1) / ((abs(seg.posY - Y)) + 1) == d[1]):
                         vision_inputs.append(1)
                         nothing_detected = False
                 if nothing_detected:
@@ -171,38 +174,36 @@ class Snake:
 
                 for wall in WALLS:
                     intersection = self.get_intersect((X, Y), (X2, Y2), wall[0], wall[1])
-                    if intersection != False:
+                    if intersection:
                         dist1.append(np.linalg.norm(np.array([X, Y]) - np.array(intersection)))
-
 
                 vision_inputs.append(min(dist1) / 600)
 
 
             else:
-                slope = (Y-Y2)/(X-X2)
-                B = Y-slope*X
+                slope = (Y - Y2) / (X - X2)
+                B = Y - slope * X
 
-                if slope*self.apple.posX+B-self.apple.posY != 0:
-                    vision_inputs.append(0)# Is there and apple in this direction
+                if slope * self.apple.posX + B - self.apple.posY != 0:
+                    vision_inputs.append(0)  # Is there and apple in this direction
                 else:
-                    vision_inputs.append(1)# Is there and apple in this direction
+                    vision_inputs.append(1)  # Is there and apple in this direction
                 nothing_detected = True
                 for seg in self.segments:
-                    if nothing_detected and seg.index != 0 and slope*seg.posX+B-seg.posY == 0:
+                    if nothing_detected and seg.index != 0 and slope * seg.posX + B - seg.posY == 0:
                         vision_inputs.append(1)
                         nothing_detected = False
+
                 if nothing_detected:
                     vision_inputs.append(0)
 
                 dist1 = []
 
                 for wall in WALLS:
-                    intersection = self.get_intersect((X,Y), (X2,Y2), wall[0], wall[1])
-                    if intersection != False:
+                    intersection = self.get_intersect((X, Y), (X2, Y2), wall[0], wall[1])
+                    if intersection:
                         dist1.append(np.linalg.norm(np.array([X, Y]) - np.array(intersection)))
-                print(dist1)
-                vision_inputs.append(min(dist1)/850)
-
+                vision_inputs.append(min(dist1) / 850)
 
         return vision_inputs
 
@@ -309,7 +310,7 @@ class SnakeGeneration():
             death_clock += 1000
 
     def create(self):
-        for _ in range(250):
+        for _ in range(100):
             self.snakes.append(Snake())
             self.num_alive += 1
 
@@ -380,7 +381,6 @@ while running:
         if s.state != DEAD:
             s.update()
     if generation.num_alive <= 0 or death_clock < 0:
-
         time.sleep(0.5)
         generation.num_alive = 0
         generation.evolve()
