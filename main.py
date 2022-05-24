@@ -14,7 +14,11 @@ screen = pygame.display.set_mode((600, 600))
 running = True
 
 NTH = (0, -1)
+NE = (1, -1)
+NW = (-1, -1)
 STH = (0, 1)
+SE = (1, 1)
+SW = (-1, 1)
 WST = (-1, 0)
 EST = (1, 0)
 
@@ -30,15 +34,19 @@ ALIVE = 1
 mut_cut = 0.2
 mut_bad = 0.3
 mut_mod = 0.3
+TOP = [(0, 0), (600, 0)]
+BOT = [(600, 600), (0, 600)]
+LEF = [(0, 0), (0, 600)]
+RIG = [(600, 600), (600, 0)]
 
-WALLS = [[(0, 0), (0, 600)], [(0, 0), (600, 0)], [(600, 600), (600, 0)], [(600, 600), (0, 600)]]
-WALLS_DICT = {(0, -1): [[(0, 0), (0, 600)]]}
+WALLS = [TOP,BOT,LEF,RIG]
+d_to_walls = {NTH:[TOP],NE:[TOP,RIG],EST:[RIG],SE:[BOT,RIG],STH:[BOT],SW:[BOT,LEF],WST:[LEF],NW:[TOP,LEF]}
 
 
 class Apple:
     def __init__(self, color):
-        self.posX = 400
-        self.posY = 200
+        self.posX = random.randint(0, 60) * 10
+        self.posY = random.randint(0, 60) * 10
         self.color = color
 
     def draw(self):
@@ -49,8 +57,8 @@ class Apple:
             self.posX = random.randint(0, 60) * 10
             self.posY = random.randint(0, 60) * 10
         else:
-            self.posX = 200
-            self.posY = 400
+            self.posX = random.randint(0, 60) * 10
+            self.posY = random.randint(0, 60) * 10
 
 
 class Snake:
@@ -126,6 +134,14 @@ class Snake:
             if not (0 <= self.segments[0].posX < 600 and 0 <= self.segments[0].posY < 600):
                 self.state = DEAD
                 generation.num_alive -= 1
+    def confirm_ray_direction(self, seg_pos, head_pos, d):
+        if seg_pos - head_pos == 0:
+            if d == 0:
+                return True
+            else:
+                return False
+        else:
+            return ((seg_pos - head_pos) / (abs(seg_pos - head_pos))) == d
 
     def get_intersect(self, A, B, C, D):
         # a1x + b1y = c1
@@ -171,8 +187,8 @@ class Snake:
                 if nothing_detected:
                     vision_inputs.append(0)
                 dist1 = []
-
-                for wall in WALLS:
+                walls = d_to_walls[d]
+                for wall in walls:
                     intersection = self.get_intersect((X, Y), (X2, Y2), wall[0], wall[1])
                     if intersection:
                         dist1.append(np.linalg.norm(np.array([X, Y]) - np.array(intersection)))
@@ -190,19 +206,21 @@ class Snake:
                     vision_inputs.append(1)  # Is there and apple in this direction
                 nothing_detected = True
                 for seg in self.segments:
-                    if nothing_detected and seg.index != 0 and slope * seg.posX + B - seg.posY == 0:
+                    if nothing_detected and seg.index != 0 and slope * seg.posX + B - seg.posY == 0 and self.confirm_ray_direction(seg.posX,X,d[0]) and self.confirm_ray_direction(seg.posY,Y,d[1]):
                         vision_inputs.append(1)
                         nothing_detected = False
+
 
                 if nothing_detected:
                     vision_inputs.append(0)
 
                 dist1 = []
-
-                for wall in WALLS:
+                walls = d_to_walls[d]
+                for wall in walls:
                     intersection = self.get_intersect((X, Y), (X2, Y2), wall[0], wall[1])
                     if intersection:
                         dist1.append(np.linalg.norm(np.array([X, Y]) - np.array(intersection)))
+
                 vision_inputs.append(min(dist1) / 850)
 
         return vision_inputs
@@ -246,7 +264,7 @@ class Snake:
                 self.check_collision()
                 self.check_for_apple()
                 self.change_targets()
-
+                self.frames_alive += 10
             self.draw()
 
 
@@ -310,7 +328,7 @@ class SnakeGeneration():
             death_clock += 1000
 
     def create(self):
-        for _ in range(100):
+        for _ in range(300):
             self.snakes.append(Snake())
             self.num_alive += 1
 
@@ -321,7 +339,7 @@ class SnakeGeneration():
 
     def evolve(self):
         for s in self.snakes:
-            s.fitness += (s.num_apples)
+            s.fitness += (s.num_apples*s.frames_alive)
 
         self.snakes.sort(key=lambda x: x.fitness, reverse=True)
         print(self.snakes[0].fitness)
