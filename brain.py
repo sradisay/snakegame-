@@ -16,14 +16,17 @@ class Net:
         self.weight_hidden2_output = np.random.uniform(-0.5, 0.5, size=(self.num_output, self.num_hidden2))
         self.activation_function = lambda x: scipy.special.expit(x)
 
+    def relu(self, x):
+        return(np.maximum(0,x))
+
     def get_outputs(self, inputs_list):
         inputs = np.array(inputs_list, ndmin=2).T
 
         hidden_inputs = np.dot(self.weight_input_hidden, inputs)
-        hidden_outputs = self.activation_function(hidden_inputs)
+        hidden_outputs = self.relu(hidden_inputs)
 
         hidden2_inputs = np.dot(self.weight_hidden_hidden2, hidden_outputs)
-        hidden2_outputs = self.activation_function(hidden2_inputs)
+        hidden2_outputs = self.relu(hidden2_inputs)
 
         final_inputs = np.dot(self.weight_hidden2_output, hidden2_outputs)
         final_outputs = self.activation_function(final_inputs)

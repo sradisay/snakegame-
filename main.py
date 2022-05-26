@@ -8,8 +8,8 @@ import pygame
 from brain import Net as Brain
 
 pygame.init()
-
-screen = pygame.display.set_mode((600, 600))
+SCREEN_WIDTH = 100
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_WIDTH))
 
 running = True
 
@@ -34,19 +34,20 @@ ALIVE = 1
 mut_cut = 0.2
 mut_bad = 0.3
 mut_mod = 0.3
-TOP = [(0, 0), (600, 0)]
-BOT = [(600, 600), (0, 600)]
-LEF = [(0, 0), (0, 600)]
-RIG = [(600, 600), (600, 0)]
+TOP = [(0, 0), (SCREEN_WIDTH, 0)]
+BOT = [(SCREEN_WIDTH, SCREEN_WIDTH), (0, SCREEN_WIDTH)]
+LEF = [(0, 0), (0, SCREEN_WIDTH)]
+RIG = [(SCREEN_WIDTH, SCREEN_WIDTH), (SCREEN_WIDTH, 0)]
 
-WALLS = [TOP,BOT,LEF,RIG]
-d_to_walls = {NTH:[TOP],NE:[TOP,RIG],EST:[RIG],SE:[BOT,RIG],STH:[BOT],SW:[BOT,LEF],WST:[LEF],NW:[TOP,LEF]}
+WALLS = [TOP, BOT, LEF, RIG]
+d_to_walls = {NTH: [TOP], NE: [TOP, RIG], EST: [RIG], SE: [BOT, RIG], STH: [BOT], SW: [BOT, LEF], WST: [LEF],
+              NW: [TOP, LEF]}
 
 
 class Apple:
     def __init__(self, color):
-        self.posX = random.randint(0, 60) * 10
-        self.posY = random.randint(0, 60) * 10
+        self.posX = 30
+        self.posY = 30
         self.color = color
 
     def draw(self):
@@ -54,22 +55,22 @@ class Apple:
 
     def kill(self, b):
         if b:
-            self.posX = random.randint(0, 60) * 10
-            self.posY = random.randint(0, 60) * 10
+            self.posX = random.randint(0, SCREEN_WIDTH // 10) * 10
+            self.posY = random.randint(0, SCREEN_WIDTH // 10) * 10
         else:
-            self.posX = random.randint(0, 60) * 10
-            self.posY = random.randint(0, 60) * 10
+            self.posX = 30
+            self.posY = 30
 
 
 class Snake:
     def __init__(self):
-        self.starting_posX, self.starting_posY = 300, 300
+        self.starting_posX, self.starting_posY = SCREEN_WIDTH / 2, SCREEN_WIDTH / 2
         self.direction = (1, 0)
         self.state = ALIVE
         self.frame = 0
         self.color = (random.randint(30, 255), random.randint(30, 255), random.randint(30, 255))
         self.apple = Apple(self.color)
-        self.net = Brain(32, 24, 12, 4)
+        self.net = Brain(32, 20, 12, 4)
         self.num_apples = 0
         self.frames_alive = 0
         self.fitness = 0
@@ -81,7 +82,7 @@ class Snake:
 
     def reset(self):
         self.state = ALIVE
-        self.apple.kill(False)
+        self.apple.kill(True)
         self.num_apples = 0
         self.frames_alive = 0
         self.fitness = 0
@@ -108,8 +109,8 @@ class Snake:
         for d in RAY_DIRS:
             X = self.segments[0].posX
             Y = self.segments[0].posY
-            X2 = X + d[0] * 600
-            Y2 = Y + d[1] * 600
+            X2 = X + d[0] * SCREEN_WIDTH
+            Y2 = Y + d[1] * SCREEN_WIDTH
             pygame.draw.line(screen, self.color, [X, Y], [X2, Y2])
 
     def change_targets(self):
@@ -131,9 +132,10 @@ class Snake:
                 generation.num_alive -= 1
 
         if self.state != DEAD:
-            if not (0 <= self.segments[0].posX < 600 and 0 <= self.segments[0].posY < 600):
+            if not (0 <= self.segments[0].posX < SCREEN_WIDTH and 0 <= self.segments[0].posY < SCREEN_WIDTH):
                 self.state = DEAD
                 generation.num_alive -= 1
+
     def confirm_ray_direction(self, seg_pos, head_pos, d):
         if seg_pos - head_pos == 0:
             if d == 0:
@@ -164,15 +166,16 @@ class Snake:
         # intersect point(x,y)
         x = ((b2 * c1) - (b1 * c2)) / det
         y = ((a1 * c2) - (a2 * c1)) / det
-        return (x, y)
+        if 0 <= x <= 600 and 0 <= y <= 600:
+            return (x, y)
 
     def vision(self):
         vision_inputs = []
         for d in RAY_DIRS:
             X = self.segments[0].posX
             Y = self.segments[0].posY
-            X2 = X + d[0] * 600
-            Y2 = Y + d[1] * 600
+            X2 = X + d[0] * SCREEN_WIDTH
+            Y2 = Y + d[1] * SCREEN_WIDTH
             if X - X2 == 0:  # (0,-1) (0, 1)
                 if self.apple.posX != X:
                     vision_inputs.append(0)  # Is there and apple in this direction
@@ -192,8 +195,8 @@ class Snake:
                     intersection = self.get_intersect((X, Y), (X2, Y2), wall[0], wall[1])
                     if intersection:
                         dist1.append(np.linalg.norm(np.array([X, Y]) - np.array(intersection)))
-
-                vision_inputs.append(min(dist1) / 600)
+                print(dist1)
+                vision_inputs.append(min(dist1) / SCREEN_WIDTH)
 
 
             else:
@@ -206,10 +209,10 @@ class Snake:
                     vision_inputs.append(1)  # Is there and apple in this direction
                 nothing_detected = True
                 for seg in self.segments:
-                    if nothing_detected and seg.index != 0 and slope * seg.posX + B - seg.posY == 0 and self.confirm_ray_direction(seg.posX,X,d[0]) and self.confirm_ray_direction(seg.posY,Y,d[1]):
+                    if nothing_detected and seg.index != 0 and slope * seg.posX + B - seg.posY == 0 and self.confirm_ray_direction(
+                            seg.posX, X, d[0]) and self.confirm_ray_direction(seg.posY, Y, d[1]):
                         vision_inputs.append(1)
                         nothing_detected = False
-
 
                 if nothing_detected:
                     vision_inputs.append(0)
@@ -220,18 +223,20 @@ class Snake:
                     intersection = self.get_intersect((X, Y), (X2, Y2), wall[0], wall[1])
                     if intersection:
                         dist1.append(np.linalg.norm(np.array([X, Y]) - np.array(intersection)))
-
-                vision_inputs.append(min(dist1) / 850)
+                print(dist1)
+                vision_inputs.append(min(dist1) / SCREEN_WIDTH)
 
         return vision_inputs
 
-    def get_inputs(self, dir):
+    def get_inputs(self, d):
         tail_dir = self.segments[-1].direction
-        inputs = [dir == NTH, dir == STH, dir == EST, dir == WST, tail_dir == NTH, tail_dir == STH, tail_dir == EST,
-                  tail_dir == WST]
+        inputs = []
 
+        inputs = [d == NTH, d == STH, d == EST, d == WST, tail_dir == NTH, tail_dir == STH, tail_dir == EST,
+                  tail_dir == WST]
         for val in self.vision():
             inputs.append(val)
+
         return inputs
 
     def get_direction(self, current_direction):
@@ -337,9 +342,12 @@ class SnakeGeneration():
             snake.reset()
             self.num_alive += 1
 
+    def cal_fitness(self, frames, apples):
+        return frames + ((2 ** apples) + (apples ** 2.1) * 500) - ((apples ** 1.2) * (0.25 * frames) ** 1.3)
+
     def evolve(self):
         for s in self.snakes:
-            s.fitness += (s.num_apples*s.frames_alive)
+            s.fitness += self.cal_fitness(s.frames_alive, s.num_apples)
 
         self.snakes.sort(key=lambda x: x.fitness, reverse=True)
         print(self.snakes[0].fitness)
@@ -382,7 +390,7 @@ gameSpeed = 5
 generation = SnakeGeneration()
 generation.create()
 death_clock = 10000
-
+generation_count = 0
 while running:
     clock.tick(3000)
     for event in pygame.event.get():
@@ -399,10 +407,11 @@ while running:
         if s.state != DEAD:
             s.update()
     if generation.num_alive <= 0 or death_clock < 0:
-        time.sleep(0.5)
         generation.num_alive = 0
         generation.evolve()
         death_clock = 10000
+        generation_count += 1
+        print(generation_count)
 
     pygame.display.flip()
     generation.has_length_changes()
